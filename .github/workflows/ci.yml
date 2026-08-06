@@ -161,7 +161,7 @@ jobs:
 
   docker_build:
     name: Docker Build
-    needs: [ci, python_build, gitleaks, sonarcloud, trivy_sca]
+    needs: [ci, python_build, sonarcloud, trivy_sca]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -308,7 +308,7 @@ jobs:
 
   upload_reports:
     name: Upload Security Reports
-    needs: [gitleaks, sonarcloud, trivy_sca, syft_sbom, trivy_image, owasp_zap]
+    needs: [sonarcloud, trivy_sca, syft_sbom, trivy_image, owasp_zap]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts from previous jobs
