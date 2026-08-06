@@ -88,6 +88,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v3
@@ -143,8 +145,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget ca-certificates
-          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.47.0_Linux-64bit.deb
-          sudo dpkg -i trivy_0.47.0_Linux-64bit.deb
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
       - name: Scan repository dependencies
         run: |
@@ -210,8 +211,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget ca-certificates
-          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.47.0_Linux-64bit.deb
-          sudo dpkg -i trivy_0.47.0_Linux-64bit.deb
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
       - name: Scan Docker image
         run: |
