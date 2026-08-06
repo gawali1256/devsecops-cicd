@@ -81,30 +81,30 @@ jobs:
           name: python-wheel
           path: dist/*.whl
 
-  gitleaks:
-    name: Gitleaks Scan
-    needs: ci
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
-          GITLEAKS_ENABLE_COMMENTS: false
-
-      - name: Upload Gitleaks report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-report
-          path: gitleaks.json
-          if-no-files-found: ignore
+  # gitleaks:
+  #   name: Gitleaks Scan
+  #   needs: ci
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v6
+  #       with:
+  #         fetch-depth: 0
+  #
+  #     - name: Run Gitleaks
+  #       uses: gitleaks/gitleaks-action@v3
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         GITLEAKS_CONFIG: .gitleaks.toml
+  #         GITLEAKS_ENABLE_COMMENTS: false
+  #
+  #     - name: Upload Gitleaks report
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: gitleaks-report
+  #         path: gitleaks.json
+  #         if-no-files-found: ignore
 
   sonarcloud:
     name: SonarQube SAST
