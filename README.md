@@ -56,5 +56,8 @@ The workflow is designed to support multiple deployment environments with staged
 - `SONAR_TOKEN`
 - `SONAR_HOST_URL`
 
+> Note: `SONAR_TOKEN` and `SONAR_HOST_URL` are optional if you do not want to run SonarQube scans.
+> The workflow now skips SonarQube if those secrets are not defined.
+
 ### Run locally with GitHub Actions
 Use the GitHub UI or CLI to trigger the workflow manually via `workflow_dispatch`.
