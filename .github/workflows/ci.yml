@@ -86,6 +86,73 @@ jobs:
           name: python-wheel
           path: dist/*.whl
 
+  docker_build_pr:
+    name: Docker Build (PR)
+    if: ${{ github.event_name == 'pull_request' }}
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build --tag $DOCKER_IMAGE .
+
+      - name: Save Docker image
+        run: |
+          docker save $DOCKER_IMAGE -o devsecops-demo.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: devsecops-demo.tar
+
+  pr_summary:
+    name: PR Summary and Artifacts
+    if: ${{ github.event_name == 'pull_request' }}
+    needs: [ci, docker_build_pr]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download pytest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pytest-results
+          path: ./artifacts
+          if-no-files-found: ignore
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: ./artifacts
+          if-no-files-found: ignore
+
+      - name: Generate PR summary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          out = []
+          out.append('## PR Quick Summary')
+          if Path('artifacts').exists():
+              files = [p.name for p in Path('artifacts').rglob('*') if p.is_file()]
+              out.append('### Artifacts uploaded:')
+              for f in files:
+                  out.append(f'- {f}')
+          else:
+              out.append('No artifacts found.')
+          Path('pr-summary.md').write_text('\n'.join(out))
+          PY
+
+      - name: Comment PR summary
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-file: pr-summary.md
+          edit-mode: replace
+
   # gitleaks:
   #   name: Gitleaks Scan
   #   needs: ci
@@ -113,6 +180,7 @@ jobs:
 
   sonarcloud:
     name: SonarQube SAST
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: ci
     runs-on: ubuntu-latest
     steps:
@@ -141,6 +209,7 @@ jobs:
 
   trivy_sca:
     name: Trivy SCA
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: ci
     runs-on: ubuntu-latest
     steps:
@@ -167,6 +236,7 @@ jobs:
 
   docker_build:
     name: Docker Build
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: [ci, python_build, sonarcloud, trivy_sca]
     runs-on: ubuntu-latest
     steps:
@@ -199,6 +269,7 @@ jobs:
 
   syft_sbom:
     name: Syft SBOM
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: docker_build
     runs-on: ubuntu-latest
     steps:
@@ -221,6 +292,7 @@ jobs:
 
   trivy_image:
     name: Trivy Image Scan
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: docker_build
     runs-on: ubuntu-latest
     steps:
@@ -257,6 +329,7 @@ jobs:
 
   docker_push:
     name: Docker Hub Push
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: trivy_image
     runs-on: ubuntu-latest
     steps:
@@ -294,6 +367,7 @@ jobs:
 
   run_container:
     name: Run Docker Container
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: docker_push
     runs-on: ubuntu-latest
     services:
@@ -336,6 +410,7 @@ jobs:
 
   owasp_zap:
     name: OWASP ZAP DAST
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: run_container
     runs-on: ubuntu-latest
     steps:
@@ -355,6 +430,7 @@ jobs:
 
   upload_reports:
     name: Upload Security Reports
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: [sonarcloud, trivy_sca, syft_sbom, trivy_image, owasp_zap]
     if: always()
     runs-on: ubuntu-latest
@@ -472,6 +548,7 @@ jobs:
 
   deploy_dev:
     name: Deploy to Dev
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: docker_push
     runs-on: ubuntu-latest
     environment: dev
@@ -481,6 +558,7 @@ jobs:
 
   deploy_test:
     name: Promote to Test
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: deploy_dev
     runs-on: ubuntu-latest
     environment: test
@@ -490,6 +568,7 @@ jobs:
 
   deploy_stage:
     name: Promote to Stage
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: deploy_test
     runs-on: ubuntu-latest
     environment: stage
@@ -499,6 +578,7 @@ jobs:
 
   deploy_prod:
     name: Promote to Prod
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: deploy_stage
     runs-on: ubuntu-latest
     environment: prod
