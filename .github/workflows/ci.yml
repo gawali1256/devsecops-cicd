@@ -107,7 +107,10 @@ jobs:
   sonarcloud:
     name: SonarQube SAST
     needs: ci
-    if: ${{ secrets.SONAR_HOST_URL && secrets.SONAR_TOKEN }}
+    env:
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    if: ${{ env.SONAR_HOST_URL != '' && env.SONAR_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -120,14 +123,14 @@ jobs:
           java-version: 17
 
       - name: Run SonarQube scan
-        uses: sonarsource/sonarqube-scan-action@v6
+        uses: sonarsource/sonarqube-scan-action@v8.2.1
         with:
           args: >-
             -Dsonar.projectKey=devsecops-demo
             -Dsonar.projectName="DevSecOps Demo"
             -Dsonar.sources=.
-            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+            -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
+            -Dsonar.login=${{ env.SONAR_TOKEN }}
 
   trivy_sca:
     name: Trivy SCA
@@ -225,7 +228,10 @@ jobs:
   docker_push:
     name: Docker Hub Push
     needs: trivy_image
-    if: ${{ secrets.DOCKERHUB_USERNAME && secrets.DOCKERHUB_TOKEN }}
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -235,13 +241,13 @@ jobs:
         uses: docker/login-action@v5
         with:
           registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Push image
         run: |
-          docker tag $DOCKER_IMAGE ${{ secrets.DOCKERHUB_USERNAME }}/devsecops-demo:latest
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/devsecops-demo:latest
+          docker tag $DOCKER_IMAGE ${{ env.DOCKERHUB_USERNAME }}/devsecops-demo:latest
+          docker push ${{ env.DOCKERHUB_USERNAME }}/devsecops-demo:latest
 
   run_container:
     name: Run Docker Container
