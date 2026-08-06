@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DevSecOps Demo</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f8fafc; }
+      header { background: #2563eb; color: #fff; padding: 1rem; }
+      main { padding: 1.5rem; }
+      .card { background: #ffffff; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+      label, input, button, select { display: block; width: 100%; margin-top: 0.5rem; }
+      button { margin-top: 1rem; background: #2563eb; color: #fff; border: none; padding: 0.75rem; border-radius: 8px; cursor: pointer; }
+      button:hover { background: #1d4ed8; }
+      pre { background: #f3f4f6; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>DevSecOps Demo</h1>
+      <p>Simple frontend for the FastAPI application.</p>
+    </header>
+    <main>
+      <div class="card">
+        <h2>Health Check</h2>
+        <button id="healthBtn">Check Health</button>
+        <pre id="healthOutput"></pre>
+      </div>
+      <div class="card">
+        <h2>Create Product</h2>
+        <label>Name<input id="productName" value="Keyboard" /></label>
+        <label>Price<input id="productPrice" type="number" value="99.99" /></label>
+        <label>Stock<input id="productStock" type="number" value="10" /></label>
+        <label>Category<input id="productCategory" value="electronics" /></label>
+        <button id="createProductBtn">Create Product</button>
+        <pre id="productOutput"></pre>
+      </div>
+      <div class="card">
+        <h2>List Products</h2>
+        <button id="listProductsBtn">Load Products</button>
+        <pre id="productsListOutput"></pre>
+      </div>
+    </main>
+    <script>
+      const apiBase = "/";
+
+      document.getElementById("healthBtn").addEventListener("click", async () => {
+        const res = await fetch(apiBase + "health");
+        document.getElementById("healthOutput").textContent = JSON.stringify(await res.json(), null, 2);
+      });
+
+      document.getElementById("createProductBtn").addEventListener("click", async () => {
+        const payload = {
+          name: document.getElementById("productName").value,
+          price: Number(document.getElementById("productPrice").value),
+          stock: Number(document.getElementById("productStock").value),
+          category: document.getElementById("productCategory").value,
+        };
+        const res = await fetch(apiBase + "products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        document.getElementById("productOutput").textContent = JSON.stringify(await res.json(), null, 2);
+      });
+
+      document.getElementById("listProductsBtn").addEventListener("click", async () => {
+        const res = await fetch(apiBase + "products");
+        document.getElementById("productsListOutput").textContent = JSON.stringify(await res.json(), null, 2);
+      });
+    </script>
+  </body>
+</html>
