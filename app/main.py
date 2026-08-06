@@ -1,5 +1,4 @@
 import logging
-import os
 import subprocess
 import uuid
 from contextlib import asynccontextmanager
@@ -14,7 +13,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, hash_password, verify_password
-from app.config import settings
 from app.database import Base, engine, get_db
 from app.models.product import Product
 from app.models.user import User
