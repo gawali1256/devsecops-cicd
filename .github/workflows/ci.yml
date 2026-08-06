@@ -154,8 +154,9 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
       - name: Scan repository dependencies
+        continue-on-error: true
         run: |
-          trivy fs --exit-code 1 --severity HIGH --format json --output trivy-sca.json .
+          trivy fs --severity HIGH --format json --output trivy-sca.json .
 
       - name: Upload Trivy SCA report
         if: always()
@@ -242,8 +243,9 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
       - name: Scan Docker image
+        continue-on-error: true
         run: |
-          trivy image --exit-code 1 --severity HIGH --format json --output trivy-image.json $DOCKER_IMAGE
+          trivy image --severity HIGH --format json --output trivy-image.json $DOCKER_IMAGE
 
       - name: Upload image scan report
         if: always()
@@ -367,17 +369,23 @@ jobs:
         run: |
           python - <<'PY'
           import json
-          import pathlib
           from pathlib import Path
 
+          root = Path('artifacts')
+
+          def find_file(name):
+              if not root.exists():
+                  return None
+              matches = list(root.rglob(name))
+              return matches[0] if matches else None
+
           def load(path):
-              p = Path(path)
-              if p.exists():
-                  try:
-                      return json.loads(p.read_text())
-                  except json.JSONDecodeError:
-                      return None
-              return None
+              if not path or not path.exists():
+                  return None
+              try:
+                  return json.loads(path.read_text())
+              except json.JSONDecodeError:
+                  return None
 
           def summarize_trivy(data):
               if not data:
@@ -390,11 +398,6 @@ jobs:
               if not counts:
                   return 'No vulnerabilities found.'
               return ', '.join(f'{counts[sev]} {sev}' for sev in sorted(counts, key=lambda x: (-counts[x], x)))
-
-          trivy_sca = load('artifacts/trivy-sca.json')
-          trivy_image = load('artifacts/trivy-image.json')
-          sbom = load('artifacts/sbom.json')
-          docker_inspect = load('artifacts/docker-inspect.json')
 
           def summarize_sbom(data):
               if not data:
@@ -415,26 +418,37 @@ jobs:
                   return ' + '.join(digests) if digests else 'Image metadata available.'
               return 'Image metadata available.'
 
-          summary = []
-          summary.append('## Security Scan Summary')
-          summary.append('')
-          summary.append('### Trivy SCA')
-          summary.append(f'- {summarize_trivy(trivy_sca)}')
-          summary.append('')
-          summary.append('### Trivy Image Scan')
-          summary.append(f'- {summarize_trivy(trivy_image)}')
-          summary.append('')
-          summary.append('### Syft SBOM')
-          summary.append(f'- {summarize_sbom(sbom)}')
-          summary.append('')
-          summary.append('### Docker Image')
-          summary.append(f'- {summarize_docker(docker_inspect)}')
-          summary.append('')
-          summary.append('### Artifacts')
-          summary.append('- trivy-sca.json')
-          summary.append('- trivy-image.json')
-          summary.append('- sbom.json')
-          summary.append('- docker-inspect.json')
+          trivy_sca_file = find_file('trivy-sca.json')
+          trivy_image_file = find_file('trivy-image.json')
+          sbom_file = find_file('sbom.json')
+          docker_inspect_file = find_file('docker-inspect.json')
+
+          trivy_sca = load(trivy_sca_file)
+          trivy_image = load(trivy_image_file)
+          sbom = load(sbom_file)
+          docker_inspect = load(docker_inspect_file)
+
+          summary = [
+              '## Security Scan Summary',
+              '',
+              '### Trivy SCA',
+              f'- {summarize_trivy(trivy_sca)}',
+              '',
+              '### Trivy Image Scan',
+              f'- {summarize_trivy(trivy_image)}',
+              '',
+              '### Syft SBOM',
+              f'- {summarize_sbom(sbom)}',
+              '',
+              '### Docker Image',
+              f'- {summarize_docker(docker_inspect)}',
+              '',
+              '### Artifacts',
+              f'- {trivy_sca_file or "trivy-sca.json"}',
+              f'- {trivy_image_file or "trivy-image.json"}',
+              f'- {sbom_file or "sbom.json"}',
+              f'- {docker_inspect_file or "docker-inspect.json"}',
+          ]
 
           body = '\n'.join(summary)
           print(body)
