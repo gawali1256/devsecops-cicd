@@ -175,11 +175,21 @@ jobs:
         run: |
           docker image inspect $DOCKER_IMAGE --format='{{json .RepoDigests}}' > docker-inspect.json
 
+      - name: Save Docker image
+        run: |
+          docker save $DOCKER_IMAGE -o devsecops-demo.tar
+
       - name: Upload Docker inspect report
         uses: actions/upload-artifact@v4
         with:
           name: docker-inspect
           path: docker-inspect.json
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: devsecops-demo.tar
 
   syft_sbom:
     name: Syft SBOM
@@ -208,6 +218,18 @@ jobs:
     needs: docker_build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: .
+
+      - name: Load Docker image
+        run: docker load -i devsecops-demo.tar
+
       - name: Install Trivy
         run: |
           sudo apt-get update
@@ -233,6 +255,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: .
+
+      - name: Load Docker image
+        run: docker load -i devsecops-demo.tar
 
       - name: Log in to Docker Hub
         env:
@@ -267,6 +298,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: .
+
+      - name: Load Docker image
+        run: docker load -i devsecops-demo.tar
 
       - name: Start Docker container
         env:
