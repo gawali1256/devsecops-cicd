@@ -87,15 +87,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run Gitleaks
-        uses: zricethezav/gitleaks-action@v3
-        with:
-          config_path: .gitleaks.toml
-          verbose: true
-          format: json
-          report_path: gitleaks.json
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
 
       - name: Upload Gitleaks report
         if: always()
@@ -103,6 +101,7 @@ jobs:
         with:
           name: gitleaks-report
           path: gitleaks.json
+          if-no-files-found: ignore
 
   sonarcloud:
     name: SonarQube SAST
