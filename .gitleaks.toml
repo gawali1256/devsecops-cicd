@@ -1,0 +1,21 @@
+title = "DevSecOps Demo Gitleaks Config"
+description = "Basic Gitleaks rules for this demo repository."
+
+[[rules]]
+id = "generic-api-key"
+description = "API keys, tokens, and credentials"
+regex = '''(?i)(apikey|api_key|auth_token|secret|password|private_key|access_token)'''
+
+[[rules]]
+id = "aws-access-key-id"
+description = "AWS access keys"
+regex = '''AKIA[0-9A-Z]{16}'''
+
+[[rules]]
+id = "aws-secret-access-key"
+description = "AWS secret keys"
+regex = '''(?i)aws(.{0,20})?(secret|private)(.{0,20})?(key|token)'''
+
+[allowlist]
+
+description = "No allowlisted values for demo"

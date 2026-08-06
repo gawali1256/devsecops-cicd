@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<ruleset name="OWASP ZAP Baseline Rules" xmlns="http://purl.org/dc/elements/1.1/">
+  <description>Baseline rules for OWASP ZAP demo scan.</description>
+  <rule>
+    <id>PASS</id>
+    <description>Ignore only passed alerts.</description>
+    <action>IGNORE</action>
+  </rule>
+</ruleset>
