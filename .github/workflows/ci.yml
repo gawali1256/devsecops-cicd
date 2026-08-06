@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -9,10 +9,15 @@ on:
       - main
   workflow_dispatch: {}
 
+env:
+  DOCKER_IMAGE: devsecops-demo:${{ github.sha }}
+
 jobs:
   ci:
-    name: GitHub Actions CI
+    name: CI (Lint + Tests)
     runs-on: ubuntu-latest
+    outputs:
+      workspace: ${{ steps.workspace.outputs.path }}
 
     steps:
       - name: Checkout repository
@@ -37,9 +42,292 @@ jobs:
         run: |
           python -m pytest -q
 
-      - name: Upload test results
+      - name: Save workspace path
+        id: workspace
+        run: echo "path=$(pwd)" >> $GITHUB_OUTPUT
+
+      - name: Upload pytest cache
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pytest-results
           path: .pytest_cache
+
+  python_build:
+    name: Python Build
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+
+      - name: Build wheel
+        run: |
+          python -m build --wheel --no-isolation
+
+      - name: Upload Python build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel
+          path: dist/*.whl
+
+  gitleaks:
+    name: Gitleaks Scan
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Gitleaks
+        uses: zricethezav/gitleaks-action@v8
+        with:
+          config_path: .gitleaks.toml
+          verbose: true
+          format: json
+          report_path: gitleaks.json
+
+      - name: Upload Gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.json
+
+  sonarcloud:
+    name: SonarQube SAST
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Run SonarQube scan
+        uses: sonarsource/sonarcloud-github-action@master
+        with:
+          projectBaseDir: .
+          sonarOrganization: ${{ secrets.SONAR_ORGANIZATION }}
+          token: ${{ secrets.SONAR_TOKEN }}
+          host: ${{ secrets.SONAR_HOST_URL }}
+
+  trivy_sca:
+    name: Trivy SCA
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget ca-certificates
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.47.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.47.0_Linux-64bit.deb
+
+      - name: Scan repository dependencies
+        run: |
+          trivy fs --exit-code 1 --severity HIGH --format json --output trivy-sca.json .
+
+      - name: Upload Trivy SCA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sca-report
+          path: trivy-sca.json
+
+  docker_build:
+    name: Docker Build
+    needs: [ci, python_build, gitleaks, sonarcloud, trivy_sca]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build --tag $DOCKER_IMAGE .
+
+      - name: Save image digest
+        run: |
+          docker image inspect $DOCKER_IMAGE --format='{{json .RepoDigests}}' > docker-inspect.json
+
+      - name: Upload Docker inspect report
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-inspect
+          path: docker-inspect.json
+
+  syft_sbom:
+    name: Syft SBOM
+    needs: docker_build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM
+        run: |
+          syft packages dir:. -o json > sbom.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+
+  trivy_image:
+    name: Trivy Image Scan
+    needs: docker_build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget ca-certificates
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.47.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.47.0_Linux-64bit.deb
+
+      - name: Scan Docker image
+        run: |
+          trivy image --exit-code 1 --severity HIGH --format json --output trivy-image.json $DOCKER_IMAGE
+
+      - name: Upload image scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-report
+          path: trivy-image.json
+
+  docker_push:
+    name: Docker Hub Push
+    needs: trivy_image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v5
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image
+        run: |
+          docker tag $DOCKER_IMAGE ${{ secrets.DOCKERHUB_USERNAME }}/devsecops-demo:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/devsecops-demo:latest
+
+  run_container:
+    name: Run Docker Container
+    needs: docker_push
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:24.0.5-dind
+        options: >-
+          --privileged
+          --network host
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start Docker container
+        run: |
+          docker run -d --name devsecops-demo -p 8000:8000 ${{ secrets.DOCKERHUB_USERNAME }}/devsecops-demo:latest
+          sleep 10
+          curl --fail http://127.0.0.1:8000/health
+
+      - name: Stop Docker container
+        run: |
+          docker stop devsecops-demo
+          docker rm devsecops-demo
+
+  owasp_zap:
+    name: OWASP ZAP DAST
+    needs: run_container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run OWASP ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.5.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: http://127.0.0.1:8000
+          rules_file_name: baseline_rules.xml
+
+  upload_reports:
+    name: Upload Security Reports
+    needs: [gitleaks, sonarcloud, trivy_sca, syft_sbom, trivy_image, owasp_zap]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts from previous jobs
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Upload combined report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: ./artifacts
+
+  deploy_dev:
+    name: Deploy to Dev
+    needs: docker_push
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Simulate deployment to dev
+        run: echo "Deploying to dev environment"
+
+  deploy_test:
+    name: Promote to Test
+    needs: deploy_dev
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - name: Simulate deployment to test
+        run: echo "Promoting build to test environment"
+
+  deploy_stage:
+    name: Promote to Stage
+    needs: deploy_test
+    runs-on: ubuntu-latest
+    environment: stage
+    steps:
+      - name: Simulate deployment to stage
+        run: echo "Promoting build to stage environment"
+
+  deploy_prod:
+    name: Promote to Prod
+    needs: deploy_stage
+    runs-on: ubuntu-latest
+    environment: prod
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Simulate deployment to prod
+        run: echo "Promoting build to prod environment"
