@@ -16,6 +16,13 @@ id = "aws-secret-access-key"
 description = "AWS secret keys"
 regex = '''(?i)aws(.{0,20})?(secret|private)(.{0,20})?(key|token)'''
 
-[allowlist]
+[[allowlists]]
 
-description = "No allowlisted values for demo"
+description = "Ignore GitHub Actions workflow secret expressions"
+paths = [
+  '''\.github/workflows/.*'''
+]
+regexTarget = "line"
+regexes = [
+  '''\${{\s*(secrets|env)\.[A-Z0-9_]+'''
+]
