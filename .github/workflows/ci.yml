@@ -225,6 +225,7 @@ jobs:
           name: trivy-image-report
           path: trivy-image.json
 
+
   docker_push:
     name: Docker Hub Push
     needs: trivy_image
