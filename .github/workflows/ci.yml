@@ -428,27 +428,6 @@ jobs:
           sbom = load(sbom_file)
           docker_inspect = load(docker_inspect_file)
 
-          summary = [
-              '## Security Scan Summary',
-              '',
-              '### Trivy SCA',
-              f'- {summarize_trivy(trivy_sca)}',
-              '',
-              '### Trivy Image Scan',
-              f'- {summarize_trivy(trivy_image)}',
-              '',
-              '### Syft SBOM',
-              f'- {summarize_sbom(sbom)}',
-              '',
-              '### Docker Image',
-              f'- {summarize_docker(docker_inspect)}',
-              '',
-              '### Artifacts',
-              f'- {trivy_sca_file or "trivy-sca.json"}',
-              f'- {trivy_image_file or "trivy-image.json"}',
-              f'- {sbom_file or "sbom.json"}',
-              f'- {docker_inspect_file or "docker-inspect.json"}',
-          ]
 
           body = '\n'.join(summary)
           print(body)
