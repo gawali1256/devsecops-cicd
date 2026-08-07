@@ -310,42 +310,49 @@ jobs:
         run: docker load -i devsecops-demo.tar
 
       - name: Start Docker container
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
         run: |
-          docker run -d --name devsecops-demo -p 8000:8000 ${{ env.DOCKERHUB_USERNAME }}/devsecops-demo:latest
+          docker run -d --name devsecops-demo -p 8000:8000 $DOCKER_IMAGE
           sleep 10
           curl --fail http://127.0.0.1:8000/health
 
       - name: Stop Docker container
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
         run: |
-          docker stop devsecops-demo
-          docker rm devsecops-demo
+          docker stop devsecops-demo || true
+          docker rm devsecops-demo || true
 
   owasp_zap:
     name: OWASP ZAP DAST
-    needs: run_container
+    needs: docker_push
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: .
+
+      - name: Load Docker image
+        run: docker load -i devsecops-demo.tar
+
+      - name: Start Docker container for ZAP scan
+        run: |
+          docker run -d --name devsecops-demo -p 8000:8000 $DOCKER_IMAGE
+          sleep 10
+          curl --fail http://127.0.0.1:8000/health
+
       - name: Run OWASP ZAP baseline scan
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
         uses: zaproxy/action-baseline@v0.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           target: http://127.0.0.1:8000
-          rules_file_name: baseline_rules.xml
+
+      - name: Stop Docker container
+        run: |
+          docker stop devsecops-demo || true
+          docker rm devsecops-demo || true
 
   upload_reports:
     name: Upload Security Reports
