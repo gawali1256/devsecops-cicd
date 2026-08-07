@@ -296,12 +296,6 @@ jobs:
     name: Run Docker Container
     needs: docker_push
     runs-on: ubuntu-latest
-    services:
-      docker:
-        image: docker:24.0.5-dind
-        options: >-
-          --privileged
-          --network host
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -428,6 +422,11 @@ jobs:
           sbom = load(sbom_file)
           docker_inspect = load(docker_inspect_file)
 
+          summary = []
+          summary.append('Trivy SCA: ' + summarize_trivy(trivy_sca))
+          summary.append('Trivy Image: ' + summarize_trivy(trivy_image))
+          summary.append('SBOM: ' + summarize_sbom(sbom))
+          summary.append('Docker inspect: ' + summarize_docker(docker_inspect))
 
           body = '\n'.join(summary)
           print(body)
