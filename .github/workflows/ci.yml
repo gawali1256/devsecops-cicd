@@ -380,7 +380,7 @@ jobs:
               matches = list(root.rglob(name))
               return matches[0] if matches else None
 
-          def load(path):
+          def load_json(path):
               if not path or not path.exists():
                   return None
               try:
@@ -388,56 +388,89 @@ jobs:
               except json.JSONDecodeError:
                   return None
 
-          def summarize_trivy(data):
+          def format_section(title, lines):
+              section = [f'# {title}', '']
+              section.extend(lines)
+              section.append('')
+              return section
+
+          def summarize_vulnerabilities(data):
               if not data:
-                  return 'No report available.'
+                  return ['No report available.']
               counts = {}
+              findings = {}
               for result in data.get('Results', []):
                   for vuln in result.get('Vulnerabilities', []):
                       sev = vuln.get('Severity', 'UNKNOWN')
                       counts[sev] = counts.get(sev, 0) + 1
+                      title = vuln.get('Title', 'Unknown')
+                      findings[title] = findings.get(title, 0) + 1
               if not counts:
-                  return 'No vulnerabilities found.'
-              return ', '.join(f'{counts[sev]} {sev}' for sev in sorted(counts, key=lambda x: (-counts[x], x)))
+                  return ['No vulnerabilities found.']
+              lines = [f'- {counts[sev]} {sev}' for sev in sorted(counts.keys(), key=lambda x: (x not in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'], x))]
+              if findings:
+                  lines.append('')
+                  lines.append('Top findings:')
+                  for title, count in sorted(findings.items(), key=lambda item: item[1], reverse=True)[:5]:
+                      lines.append(f'  - {count} x {title}')
+              return lines
 
           def summarize_sbom(data):
               if not data:
-                  return 'No SBOM available.'
-              artifacts = data.get('artifacts')
-              if isinstance(artifacts, list):
-                  return f'{len(artifacts)} packages detected.'
-              return 'SBOM generated.'
+                  return ['No SBOM available.']
+              artifacts = data.get('artifacts', [])
+              lines = [f'- Packages detected: {len(artifacts)}']
+              if artifacts:
+                  lines.append('- Sample packages:')
+                  for pkg in sorted(artifacts, key=lambda item: item.get('name', ''))[:8]:
+                      lines.append(f"  - {pkg.get('name', 'unknown')} {pkg.get('version', '')} ({pkg.get('type', 'unknown')})")
+              return lines
 
           def summarize_docker(data):
               if not data:
-                  return 'No image inspect report.'
+                  return ['No image inspect report available.']
               if isinstance(data, list) and data:
-                  digests = []
-                  for item in data:
-                      if isinstance(item, dict):
-                          digests.extend(item.get('RepoDigests', []))
-                  return ' + '.join(digests) if digests else 'Image metadata available.'
-              return 'Image metadata available.'
+                  item = data[0]
+                  lines = []
+                  lines.append(f"- RepoDigests: {item.get('RepoDigests', [])}")
+                  lines.append(f"- Architecture: {item.get('Architecture')}")
+                  lines.append(f"- OS: {item.get('Os')}")
+                  lines.append(f"- Created: {item.get('Created')}")
+                  config = item.get('Config', {}) or {}
+                  lines.append(f"- Entrypoint: {config.get('Entrypoint')}")
+                  lines.append(f"- Cmd: {config.get('Cmd')}")
+                  return lines
+              return ['Image metadata available but not in expected format.']
 
-          trivy_sca_file = find_file('trivy-sca.json')
-          trivy_image_file = find_file('trivy-image.json')
-          sbom_file = find_file('sbom.json')
-          docker_inspect_file = find_file('docker-inspect.json')
+          files = [
+              ('Trivy SCA report', find_file('trivy-sca.json')),
+              ('Trivy image report', find_file('trivy-image.json')),
+              ('SBOM report', find_file('sbom.json')),
+              ('Docker inspect report', find_file('docker-inspect.json')),
+          ]
 
-          trivy_sca = load(trivy_sca_file)
-          trivy_image = load(trivy_image_file)
-          sbom = load(sbom_file)
-          docker_inspect = load(docker_inspect_file)
+          trivy_sca = load_json(files[0][1])
+          trivy_image = load_json(files[1][1])
+          sbom = load_json(files[2][1])
+          docker_inspect = load_json(files[3][1])
 
           summary = []
-          summary.append('Trivy SCA: ' + summarize_trivy(trivy_sca))
-          summary.append('Trivy Image: ' + summarize_trivy(trivy_image))
-          summary.append('SBOM: ' + summarize_sbom(sbom))
-          summary.append('Docker inspect: ' + summarize_docker(docker_inspect))
+          summary += format_section('Trivy SCA Report', summarize_vulnerabilities(trivy_sca))
+          summary += format_section('Trivy Image Report', summarize_vulnerabilities(trivy_image))
+          summary += format_section('SBOM Report', summarize_sbom(sbom))
+          summary += format_section('Docker Image Metadata', summarize_docker(docker_inspect))
 
-          body = '\n'.join(summary)
-          print(body)
-          Path('scan-summary.md').write_text(body)
+          artifact_files = []
+          if root.exists():
+              for path in sorted(root.rglob('*')):
+                  if path.is_file():
+                      artifact_files.append(f'- {path.relative_to(root)}')
+          if artifact_files:
+              summary += format_section('Available artifacts in download', artifact_files)
+
+          out = Path('scan-summary.md')
+          out.write_text('\n'.join(summary))
+          print(out.read_text())
           PY
 
       - name: Comment PR summary
@@ -448,6 +481,12 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body-file: scan-summary.md
           edit-mode: replace
+
+      - name: Upload scan summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-summary
+          path: scan-summary.md
 
       - name: Upload combined report
         uses: actions/upload-artifact@v4
